@@ -10,16 +10,23 @@ import IConv, {
 } from '../../model/conv'
 import IColumnTabData, { IIndexData, ISequenceData } from '../../model/edit-table'
 import IFkTabData from 'src/app/model/fk-tab-data'
-import { ColLength, Dialect, ObjectExplorerNodeType, StorageKeys, autoGenSupportedDbs } from 'src/app/app.constants'
+import {
+  ColLength,
+  Dialect,
+  ObjectExplorerNodeType,
+  StorageKeys,
+  autoGenSupportedDbs,
+} from 'src/app/app.constants'
 import { BehaviorSubject } from 'rxjs'
 import { FetchService } from '../fetch/fetch.service'
 import { extractSourceDbName } from 'src/app/utils/utils'
+import ICcTabData from 'src/app/model/cc-tab-data'
 
 @Injectable({
   providedIn: 'root',
 })
 export class ConversionService {
-  constructor(private fetch: FetchService,) { }
+  constructor(private fetch: FetchService) {}
   private standardTypeToPGSQLTypeMapSub = new BehaviorSubject(new Map<string, string>())
   private pgSQLToStandardTypeTypeMapSub = new BehaviorSubject(new Map<string, string>())
 
@@ -30,7 +37,9 @@ export class ConversionService {
   getStandardTypeToPGSQLTypemap() {
     return this.fetch.getStandardTypeToPGSQLTypemap().subscribe({
       next: (standardTypeToPGSQLTypeMap: any) => {
-        this.standardTypeToPGSQLTypeMapSub.next(new Map<string, string>(Object.entries(standardTypeToPGSQLTypeMap)))
+        this.standardTypeToPGSQLTypeMapSub.next(
+          new Map<string, string>(Object.entries(standardTypeToPGSQLTypeMap))
+        )
       },
     })
   }
@@ -38,7 +47,9 @@ export class ConversionService {
   getPGSQLToStandardTypeTypemap() {
     return this.fetch.getPGSQLToStandardTypeTypemap().subscribe({
       next: (pgSQLToStandardTypeTypeMap: any) => {
-        this.pgSQLToStandardTypeTypeMapSub.next(new Map<string, string>(Object.entries(pgSQLToStandardTypeTypeMap)))
+        this.pgSQLToStandardTypeTypeMapSub.next(
+          new Map<string, string>(Object.entries(pgSQLToStandardTypeTypeMap))
+        )
       },
     })
   }
@@ -84,7 +95,10 @@ export class ConversionService {
           name: spannerTable.Name,
           status: conversionRates[tableId],
           type: ObjectExplorerNodeType.Table,
-          parent: spannerTable.ParentTable.Id != '' ? conv.SpSchema[spannerTable.ParentTable.Id]?.Name : '',
+          parent:
+            spannerTable.ParentTable.Id != ''
+              ? conv.SpSchema[spannerTable.ParentTable.Id]?.Name
+              : '',
           pos: -1,
           isSpannerNode: true,
           id: tableId,
@@ -178,7 +192,7 @@ export class ConversionService {
     this.sortNodeChildren(parentNode, sortOrder)
     this.sortNodeChildren(sequenceNode, sortOrder)
 
-    let mainNodeChildren :ISchemaObjectNode[] = [parentNode]
+    let mainNodeChildren: ISchemaObjectNode[] = [parentNode]
     if (autoGenSupportedDbs.includes(this.srcDbName)) {
       mainNodeChildren.push(sequenceNode)
     }
@@ -282,7 +296,54 @@ export class ConversionService {
       },
     ]
   }
+  getCheckConstrainst(tableId: string, data: IConv): ICcTabData[] {
+    debugger
+    let srcArr = data.SrcSchema[tableId].CheckConstraints
+    let spArr = data.SpSchema[tableId].CheckConstraint || []
 
+    let res: ICcTabData[] = []
+    let index = 0
+    if (spArr.length == 0) {
+      srcArr.forEach((item) => {
+        index++
+        res.push({
+          srcSno: `${index}`,
+          srcConstraintName: item.Name,
+          srcCondition: item.Expr,
+          spSno: `${index}`,
+          spConstraintName: item.Name,
+          spCondition: item.Expr,
+          deleteIndex: `ck${index}`,
+        })
+      })
+    } else if (srcArr.length > spArr.length) {
+      for (let i = 0; i < srcArr.length; i++) {
+        res.push({
+          srcSno: `${i + 1}`,
+          srcConstraintName: srcArr[i].Name,
+          srcCondition: srcArr[i].Expr,
+          spSno: spArr[i] ? `${i + 1}` : '',
+          spConstraintName: spArr[i] ? spArr[i].Name : '',
+          spCondition: spArr[i] ? spArr[i].Expr : '',
+          deleteIndex: `ck${i + 1}`,
+        })
+      }
+    } else {
+      for (let i = 0; i < spArr.length; i++) {
+        res.push({
+          srcSno: srcArr[i] ? `${i + 1}` : '',
+          srcConstraintName: srcArr[i] ? srcArr[i].Name : '',
+          srcCondition: srcArr[i] ? srcArr[i].Expr : '',
+          spSno: `${i + 1}`,
+          spConstraintName: spArr[i].Name,
+          spCondition: spArr[i].Expr,
+          deleteIndex: `ck${i + 1}`,
+        })
+      }
+    }
+
+    return res
+  }
   getColumnMapping(tableId: string, data: IConv): IColumnTabData[] {
     let spTableName = this.getSpannerTableNameFromId(tableId, data)
     let srcColIds = data.SrcSchema[tableId].ColIds
@@ -309,7 +370,13 @@ export class ConversionService {
         spOrder: spannerColDef ? i + 1 : '',
         srcOrder: i + 1,
         spColName: spannerColDef ? spannerColDef.Name : '',
-        spDataType: spannerColDef ? (data.SpDialect === Dialect.PostgreSQLDialect ? (pgSQLDatatype === undefined ? spannerColDef.T.Name : pgSQLDatatype) : spannerColDef.T.Name) : '',
+        spDataType: spannerColDef
+          ? data.SpDialect === Dialect.PostgreSQLDialect
+            ? pgSQLDatatype === undefined
+              ? spannerColDef.T.Name
+              : pgSQLDatatype
+            : spannerColDef.T.Name
+          : '',
         srcColName: data.SrcSchema[tableId].ColDefs[colId].Name,
         srcDataType: data.SrcSchema[tableId].ColDefs[colId].Type.Name,
         spIsPk:
@@ -321,16 +388,29 @@ export class ConversionService {
         srcIsNotNull: data.SrcSchema[tableId].ColDefs[colId].NotNull,
         srcId: colId,
         spId: spannerColDef ? colId : '',
-        spColMaxLength: spannerColDef?.T.Len != 0 ? (spannerColDef?.T.Len != spColMax ? spannerColDef?.T.Len: 'MAX') : '',
-        srcColMaxLength: data.SrcSchema[tableId].ColDefs[colId].Type.Mods != null ? data.SrcSchema[tableId].ColDefs[colId].Type.Mods[0] : '',
-        spAutoGen: spannerColDef?.AutoGen != null ? spannerColDef?.AutoGen : {
-          Name: '',
-          GenerationType: ''
-        },
-        srcAutoGen: data.SrcSchema[tableId].ColDefs[colId].AutoGen ? data.SrcSchema[tableId].ColDefs[colId].AutoGen : {
-          Name: '',
-          GenerationType: ''
-        },
+        spColMaxLength:
+          spannerColDef?.T.Len != 0
+            ? spannerColDef?.T.Len != spColMax
+              ? spannerColDef?.T.Len
+              : 'MAX'
+            : '',
+        srcColMaxLength:
+          data.SrcSchema[tableId].ColDefs[colId].Type.Mods != null
+            ? data.SrcSchema[tableId].ColDefs[colId].Type.Mods[0]
+            : '',
+        spAutoGen:
+          spannerColDef?.AutoGen != null
+            ? spannerColDef?.AutoGen
+            : {
+                Name: '',
+                GenerationType: '',
+              },
+        srcAutoGen: data.SrcSchema[tableId].ColDefs[colId].AutoGen
+          ? data.SrcSchema[tableId].ColDefs[colId].AutoGen
+          : {
+              Name: '',
+              GenerationType: '',
+            },
       }
     })
     if (spColIds) {
@@ -338,12 +418,20 @@ export class ConversionService {
         if (srcColIds.indexOf(colId) < 0) {
           let spColumn = data.SpSchema[tableId].ColDefs[colId]
           let spannerColDef = spTableName ? data.SpSchema[tableId]?.ColDefs[colId] : null
-          let pgSQLDatatype = spannerColDef ? standardTypeToPGSQLTypeMap.get(spannerColDef.T.Name) : ''
+          let pgSQLDatatype = spannerColDef
+            ? standardTypeToPGSQLTypeMap.get(spannerColDef.T.Name)
+            : ''
           res.push({
             spOrder: i + 1,
             srcOrder: '',
             spColName: spColumn.Name,
-            spDataType: spannerColDef ? (data.SpDialect === Dialect.PostgreSQLDialect ? (pgSQLDatatype === undefined ? spannerColDef.T.Name : pgSQLDatatype) : spannerColDef.T.Name) : '',
+            spDataType: spannerColDef
+              ? data.SpDialect === Dialect.PostgreSQLDialect
+                ? pgSQLDatatype === undefined
+                  ? spannerColDef.T.Name
+                  : pgSQLDatatype
+                : spannerColDef.T.Name
+              : '',
             srcColName: '',
             srcDataType: '',
             spIsPk: spPks ? spPks.map((p) => p.ColId).indexOf(colId) !== -1 : false,
@@ -357,8 +445,8 @@ export class ConversionService {
             spAutoGen: spColumn.AutoGen,
             srcAutoGen: {
               Name: '',
-              GenerationType: ''
-            }
+              GenerationType: '',
+            },
           })
         }
       })
@@ -417,7 +505,7 @@ export class ConversionService {
         srcOnDelete: srcFk.OnDelete,
         spOnDelete: spFk ? spFk.OnDelete : '',
         srcOnUpdate: srcFk.OnUpdate,
-        spOnUpdate: spFk? spFk.OnUpdate : '',
+        spOnUpdate: spFk ? spFk.OnUpdate : '',
       }
     })
   }
@@ -486,7 +574,11 @@ export class ConversionService {
     return sequence
   }
 
-  getSpannerFkFromId(conv: IConv, tableId: string, srcFkId: string | undefined): IForeignKey | null {
+  getSpannerFkFromId(
+    conv: IConv,
+    tableId: string,
+    srcFkId: string | undefined
+  ): IForeignKey | null {
     let spFk: IForeignKey | null = null
     conv.SpSchema[tableId]?.ForeignKeys?.forEach((fk: IForeignKey) => {
       if (fk.Id == srcFkId) {

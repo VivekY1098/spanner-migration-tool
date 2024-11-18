@@ -1,5 +1,5 @@
 {
- "GCPProjectID": "",
- "SpannerProjectID": "",
- "SpannerInstanceID": ""
+  "GCPProjectID": "vivekyadav-1731900261",
+  "SpannerProjectID": "vivekyadav-1731900261",
+  "SpannerInstanceID": "spanner-demo"
 }
